@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+.env
+.env.*
+!.env.example
+/data/
+/datasets/
+/sample-data/
+*.dcm
+*.dicom
+playwright-report/
+test-results/
