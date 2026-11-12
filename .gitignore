@@ -12,3 +12,7 @@ dist/
 *.dicom
 playwright-report/
 test-results/
+/reports/
+/exports/
+shoulder-workspace-report*.json
+shoulder-workspace-report*.pdf

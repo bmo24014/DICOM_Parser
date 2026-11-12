@@ -101,6 +101,7 @@ export async function importLocalDicom(
       }
       series.instances.push({
         id: `local-instance-${index}`,
+        sopInstanceUID: dataset.string("x00080018")?.trim() || undefined,
         file,
         instanceNumber: Number.isFinite(rawInstanceNumber)
           ? rawInstanceNumber

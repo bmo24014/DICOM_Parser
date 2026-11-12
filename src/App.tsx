@@ -1,10 +1,12 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import type { Finding, Report, Study } from "./domain";
+import type { ManualAnnotation, Report, Study } from "./domain";
 import { demoReport } from "./data/demo";
-import { createFinding, parseReport, serializeReport } from "./data/reports";
+import { parseReport, serializeReport } from "./data/reports";
 import { importLocalDicom } from "./data/dicom";
 import ViewerBoundary from "./components/ViewerBoundary";
+import ClinicalContextEditor from "./components/ClinicalContextEditor";
+import ReportEditor from "./components/ReportEditor";
 
 const DicomViewer = lazy(() => import("./components/DicomViewer"));
 const purpose =
@@ -118,105 +120,15 @@ function Landing({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-function FindingEditor({
-  finding,
-  index,
-  onChange,
-  onDelete,
-}: {
-  finding: Finding;
-  index: number;
-  onChange: (patch: Partial<Finding>) => void;
-  onDelete: () => void;
-}) {
-  return (
-    <article className="finding-card">
-      <div className="section-heading">
-        <h3>Finding {index + 1}</h3>
-        <button
-          className="text-button danger"
-          onClick={onDelete}
-          aria-label={`Delete finding ${index + 1}`}
-        >
-          Delete
-        </button>
-      </div>
-      <label>
-        Anatomical structure
-        <input
-          value={finding.structure}
-          maxLength={200}
-          onChange={(e) => onChange({ structure: e.target.value })}
-          placeholder="e.g. Supraspinatus tendon"
-        />
-      </label>
-      <label>
-        Observation
-        <textarea
-          value={finding.observation}
-          maxLength={5000}
-          onChange={(e) => onChange({ observation: e.target.value })}
-          placeholder="Enter an observation for review"
-          rows={3}
-        />
-      </label>
-      <div className="form-row">
-        <label>
-          Laterality
-          <select
-            value={finding.laterality}
-            onChange={(e) =>
-              onChange({ laterality: e.target.value as Finding["laterality"] })
-            }
-          >
-            <option value="unspecified">Unspecified</option>
-            <option value="left">Left</option>
-            <option value="right">Right</option>
-            <option value="bilateral">Bilateral</option>
-          </select>
-        </label>
-        <label>
-          Review status
-          <select
-            value={finding.reviewStatus}
-            onChange={(e) =>
-              onChange({
-                reviewStatus: e.target.value as Finding["reviewStatus"],
-              })
-            }
-          >
-            <option value="draft">Draft</option>
-            <option value="reviewed">Reviewed</option>
-          </select>
-        </label>
-      </div>
-      <label>
-        Source
-        <select
-          value={finding.source}
-          onChange={(e) =>
-            onChange({ source: e.target.value as Finding["source"] })
-          }
-        >
-          <option value="clinician entered">Clinician entered</option>
-          <option value="dataset label">Dataset label</option>
-          <option value="simulated">Simulated</option>
-        </select>
-      </label>
-      <label>
-        Note <span className="quiet">(optional)</span>
-        <input
-          value={finding.note ?? ""}
-          maxLength={10000}
-          onChange={(e) => onChange({ note: e.target.value })}
-        />
-      </label>
-    </article>
-  );
-}
-
 function Workspace({ onHome }: { onHome: () => void }) {
   const [mode, setMode] = useState<"demo" | "local">("demo");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [confirmedStudyId, setConfirmedStudyId] = useState<string>();
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string>();
+  const [navigationTarget, setNavigationTarget] = useState<{
+    annotationId: string;
+    requestId: number;
+  }>();
   const [report, setReport] = useState<Report>(() =>
     structuredClone(demoReport),
   );
@@ -275,6 +187,9 @@ function Workspace({ onHome }: { onHome: () => void }) {
         throw new Error("Report files must be smaller than 1 MB.");
       const next = parseReport(await file.text());
       setReport(next);
+      setConfirmedStudyId(undefined);
+      setSelectedAnnotationId(undefined);
+      setNavigationTarget(undefined);
       setNotice(
         "Report imported. Image selection is unchanged; verify any study reference before using it.",
       );
@@ -305,13 +220,71 @@ function Workspace({ onHome }: { onHome: () => void }) {
     }
   }
 
-  function updateFinding(id: string, patch: Partial<Finding>) {
+  async function exportPdf() {
+    setPdfBusy(true);
+    setError("");
+    try {
+      const { generateReportPdf } = await import("./data/pdf");
+      const bytes = await generateReportPdf(report);
+      const blob = new Blob([bytes.slice().buffer as ArrayBuffer], {
+        type: "application/pdf",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "shoulder-workspace-report.pdf";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice(
+        "PDF exported from the current report. It is a printable document; use JSON to preserve full editing and region geometry.",
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not create PDF. Your report remains editable.",
+      );
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  function navigateToAnnotation(annotation: ManualAnnotation) {
+    const targetStudy = studies.find(
+      (item) => item.id === annotation.reference.studyInstanceUID,
+    );
+    const targetSeries = targetStudy?.series.find(
+      (item) => item.id === annotation.reference.seriesInstanceUID,
+    );
+    if (
+      !targetSeries?.instances.some(
+        (item) =>
+          item.sopInstanceUID === annotation.reference.sopInstanceUID &&
+          item.frameCount >= annotation.reference.frameNumber,
+      )
+    ) {
+      setError(
+        "The images for this manual region are not available. Import the matching study and series; report geometry and descriptions have been preserved.",
+      );
+      return;
+    }
+    setError("");
+    setMode("local");
+    setStudyId(targetStudy!.id);
+    setSeriesId(targetSeries.id);
+    setSelectedAnnotationId(annotation.id);
+    setNavigationTarget({ annotationId: annotation.id, requestId: Date.now() });
+    document
+      .getElementById("image-review")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function deleteAnnotation(id: string) {
     setReport((current) => ({
       ...current,
-      findings: current.findings.map((item) =>
-        item.id === id ? { ...item, ...patch } : item,
-      ),
+      annotations: current.annotations.filter((item) => item.id !== id),
     }));
+    if (selectedAnnotationId === id) setSelectedAnnotationId(undefined);
   }
 
   return (
@@ -416,7 +389,7 @@ function Workspace({ onHome }: { onHome: () => void }) {
         )}
         <div className="workspace-grid">
           <section className="imaging-column" aria-label="Image review">
-            <div className="panel image-panel">
+            <div className="panel image-panel" id="image-review">
               <div className="panel-heading">
                 <h2>Image review</h2>
                 <span className="panel-meta">
@@ -479,7 +452,7 @@ function Workspace({ onHome }: { onHome: () => void }) {
                   <p>Grouping image files into studies and series.</p>
                 </div>
               ) : mode === "local" && series ? (
-                <ViewerBoundary key={series.id}>
+                <ViewerBoundary key={`${study?.id}:${series.id}`}>
                   <Suspense
                     fallback={
                       <div className="image-empty" role="status">
@@ -487,7 +460,17 @@ function Workspace({ onHome }: { onHome: () => void }) {
                       </div>
                     }
                   >
-                    <DicomViewer series={series} />
+                    <DicomViewer
+                      series={series}
+                      studyInstanceUID={study?.id}
+                      annotations={report.annotations}
+                      onAnnotationsChange={(annotations) =>
+                        setReport((current) => ({ ...current, annotations }))
+                      }
+                      selectedAnnotationId={selectedAnnotationId}
+                      onSelectAnnotation={setSelectedAnnotationId}
+                      navigationTarget={navigationTarget}
+                    />
                   </Suspense>
                 </ViewerBoundary>
               ) : (
@@ -514,47 +497,7 @@ function Workspace({ onHome }: { onHome: () => void }) {
                 </div>
               )}
             </div>
-            <section className="panel context-panel">
-              <div className="panel-heading">
-                <h2>Clinical context</h2>
-                <span className="badge">
-                  {report.clinicalContext.fictional
-                    ? "Fictional example"
-                    : "Imported · unverified"}
-                </span>
-              </div>
-              <div className="panel-body">
-                <div className="context-heading">
-                  <span className="context-icon" aria-hidden="true">
-                    ≡
-                  </span>
-                  <div>
-                    <h3>
-                      {report.clinicalContext.fictional
-                        ? "Synthetic case history"
-                        : "Imported report context"}
-                    </h3>
-                    <p className="quiet small">
-                      Manually authored · Not derived from images
-                    </p>
-                  </div>
-                </div>
-                <p className="preserve-text">
-                  {report.clinicalContext.history}
-                </p>
-                <div className="context-summary">
-                  <span className="eyebrow">CONTEXT SUMMARY</span>
-                  <p className="preserve-text">
-                    {report.clinicalContext.summary}
-                  </p>
-                </div>
-                <p className="small quiet">
-                  This context is separate from the selected images. AI
-                  summaries and clinician-reviewed areas of interest are future
-                  research features.
-                </p>
-              </div>
-            </section>
+            <ClinicalContextEditor report={report} setReport={setReport} />
             <p className="small quiet image-footnote">
               Review controls apply to supported DICOM images. Compressed
               formats and unusual transfer syntaxes may be unsupported; decoder
@@ -573,24 +516,20 @@ function Workspace({ onHome }: { onHome: () => void }) {
               <span className="panel-meta">EDITABLE DRAFT</span>
             </div>
             <div className="panel-body">
-              <p className="small quiet">
-                Entries are authored or imported; this app does not detect
-                pathology. “Reviewed” is a user-set workflow label, not clinical
-                approval.
-              </p>
-              {report.studyInstanceUID && (
-                <p className="message warning small">
-                  This report contains a study UID reference. Its relationship
-                  to the selected images has not been verified.
-                </p>
-              )}
-              <div className="button-row report-actions">
-                <button onClick={() => jsonInput.current?.click()}>
-                  Import JSON
+              <div className="report-export-actions">
+                <button
+                  className="primary export-pdf"
+                  onClick={exportPdf}
+                  disabled={pdfBusy}
+                >
+                  {pdfBusy ? "Preparing PDF…" : "Export PDF ↓"}
                 </button>
-                <button className="primary" onClick={exportJson}>
-                  Export JSON ↓
-                </button>
+                <div className="button-row">
+                  <button onClick={exportJson}>Save Draft (JSON)</button>
+                  <button onClick={() => jsonInput.current?.click()}>
+                    Import JSON
+                  </button>
+                </div>
                 <input
                   ref={jsonInput}
                   type="file"
@@ -599,48 +538,41 @@ function Workspace({ onHome }: { onHome: () => void }) {
                   onChange={importJson}
                   aria-label="Import report JSON"
                 />
-              </div>
-              <p className="small quiet">
-                Import replaces the report. Export your edits first.
-              </p>
-              <div className="findings-list">
-                {report.findings.map((finding, i) => (
-                  <FindingEditor
-                    key={finding.id}
-                    finding={finding}
-                    index={i}
-                    onChange={(patch) => updateFinding(finding.id, patch)}
-                    onDelete={() =>
-                      setReport((current) => ({
-                        ...current,
-                        findings: current.findings.filter(
-                          (item) => item.id !== finding.id,
-                        ),
-                      }))
-                    }
-                  />
-                ))}
-              </div>
-              {!report.findings.length && (
-                <p className="empty-findings">
-                  No findings yet. Add an entry to begin a draft.
+                <p className="small quiet">
+                  Export to keep your work. Import replaces the current draft;
+                  save it first. PDF is printable; JSON restores all editable
+                  fields and manual regions.
                 </p>
-              )}
-              <button
-                className="add-finding"
-                disabled={report.findings.length >= 1000}
-                onClick={() =>
-                  setReport((current) => ({
-                    ...current,
-                    findings: [...current.findings, createFinding()],
-                  }))
-                }
-              >
-                ＋ Add finding
-              </button>
+              </div>
+              <ReportEditor
+                report={report}
+                setReport={setReport}
+                study={study}
+                confirmedStudyId={confirmedStudyId}
+                onAssociate={() => {
+                  if (study && !study.id.startsWith("missing-")) {
+                    setReport((current) => ({
+                      ...current,
+                      studyInstanceUID: study.id,
+                    }));
+                    setConfirmedStudyId(study.id);
+                  }
+                }}
+                onUnlink={() => {
+                  setReport((current) => {
+                    const { studyInstanceUID: _removed, ...rest } = current;
+                    void _removed;
+                    return rest;
+                  });
+                  setConfirmedStudyId(undefined);
+                }}
+                selectedAnnotationId={selectedAnnotationId}
+                onNavigate={navigateToAnnotation}
+                onDeleteAnnotation={deleteAnnotation}
+              />
               <p className="small quiet report-footer">
-                Prototype JSON only. DICOM SR / TID 1500 export is a future
-                feature. Work is held in memory until you export it.
+                PDF and JSON are prototype report formats, not DICOM SR / TID
+                1500. Session edits are lost on refresh unless saved as JSON.
               </p>
             </div>
           </section>

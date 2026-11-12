@@ -11,6 +11,11 @@ export default defineConfig({
     exclude: ["@cornerstonejs/dicom-image-loader"],
     include: [
       "@cornerstonejs/core",
+      "@cornerstonejs/tools",
+      "@cornerstonejs/core/utilities/windowLevel",
+      "@cornerstonejs/core/enums/VOILUTFunctionType",
+      "pdf-lib",
+      "@pdf-lib/fontkit",
       "@cornerstonejs/metadata",
       "dicom-parser",
       "events",

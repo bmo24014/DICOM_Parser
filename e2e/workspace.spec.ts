@@ -21,7 +21,9 @@ test("landing, demo edits, JSON export/import, validation and responsive layout"
     page.getByRole("heading", { name: /A considered space/ }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Open Workspace/ }).click();
-  await expect(page.getByText("Fictional example")).toBeVisible();
+  await expect(
+    page.getByText("Simulated · Fictional example", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Import DICOM to test viewer" }),
   ).toBeVisible();
@@ -37,7 +39,7 @@ test("landing, demo edits, JSON export/import, validation and responsive layout"
     .getByLabel("Note")
     .fill("No measurements or diagnosis.");
   const downloaded = page.waitForEvent("download");
-  await page.getByRole("button", { name: /Export JSON/ }).click();
+  await page.getByRole("button", { name: /Save Draft/ }).click();
   const download = await downloaded;
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];
@@ -54,7 +56,7 @@ test("landing, demo edits, JSON export/import, validation and responsive layout"
   expect(report.clinicalContext.fictional).toBe(true);
   await page.getByRole("button", { name: "Delete finding 1" }).click();
   await expect(findings).toHaveCount(1);
-  await page.getByRole("button", { name: "Add finding" }).click();
+  await page.locator(".add-finding").click();
   await expect(findings).toHaveCount(2);
   await page.getByLabel("Import report JSON").setInputFiles({
     name: "edited.json",

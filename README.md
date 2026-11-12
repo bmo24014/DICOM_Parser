@@ -1,77 +1,81 @@
 # Shoulder MRI Workspace
 
-An early-stage, local-first educational research prototype for reviewing shoulder MRI images alongside fictional clinical context and editable structured findings. **Research prototype · In development · Not for clinical use.** It does not diagnose, recommend treatment, detect pathology, or run diagnostic AI.
-
-The current milestone works without SCOPE-MRI files, an account, a backend, or paid services. Demo mode includes fictional text and editable findings; no MRI image or diagnostic result is simulated.
+A local-first educational research prototype for shoulder MRI review and editable structured reports. **In development — Not for clinical use.** No diagnostic AI, cloud inference, or automatic pathology detection is implemented.
 
 ## Run locally
 
-Use Node.js 24 and npm 11 (the development environment versions). A modern desktop browser with WebGL support is recommended for image rendering.
+Use Node.js 24 (see `.nvmrc`; minimum 22.12) and npm. From this repository:
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite, usually `http://127.0.0.1:5173`, and select **Open Workspace**. The server binds to loopback by default. Dependencies require internet access during installation; there is no account or cloud API configuration.
-
-For a production build and local preview:
+Open Vite's local address and select **Open Workspace**. No account, backend, PACS, database, or SCOPE-MRI files are needed for demo context and reporting. The development server binds to loopback. Stop it with Ctrl+C.
 
 ```sh
 npm run build
 npm run preview
 ```
 
-## Use the workspace
+## Workflow
 
-1. **Demo mode:** read the explicitly fictional, manually authored history. Edit any sample finding, add or delete entries, and change laterality, source, review status, or the optional note. The samples are drafting prompts, not observations made from images.
-2. **Keep your work:** select **Export JSON**. Changes stay in browser memory until exported; refreshing or closing the page loses them. Returning to the overview preserves edits within the same session. **Import JSON** replaces the current report, so export existing work first.
-3. **Review local images:** choose multiple DICOM image files or a folder, including extensionless DICOM files. Files are grouped by study and series UIDs where available. Select the study and series, then use the frame controls, slider, or mouse wheel to navigate. Choose **Window / level**, **Pan**, or **Zoom** and drag with the left mouse button. **Reset view** restores the initial view. Files with missing UIDs are grouped conservatively rather than combined using names or descriptions.
-4. **Keep context separate:** importing images does not associate the selected study with the fictional context or the existing findings. An imported report's study UID is an unverified reference, not proof that its contents match the images.
+1. **Import images:** unzip downloaded archives first. Choose **Local DICOM import**, then **Select folder** or **Select DICOM files**. Select a study and series. File selection never changes the report's fictional context or associates it with that study automatically.
+2. **Enter context:** edit the fictional/de-identified case identifier, history, indication, summary, and notes. Context is simulated, imported, or manually entered; editing marks it manual. Keep the fictional checkbox accurate. No values are inferred from images.
+3. **Associate deliberately:** in **A. Examination information**, review the selected study UID, verify the context/report match, check the confirmation, and choose **Confirm study association**. Changing selected studies does not move an association. Imported saved references must be rechecked in the current session.
+4. **Review images:** use previous/next, the frame slider, or wheel. Choose pan, zoom, or window/level and drag. Numeric window width/center inputs track the viewport; **Reset Window/Level** restores image defaults without resetting zoom/pan. **Reset view** restores camera and display defaults. Pixel source files remain unchanged.
+5. **Flag regions:** choose **Flag Region**, then drag a rectangle on the displayed image. Rectangles are explicitly manual and show no quantitative measurements. Use the same tool to select a rectangle and drag its corners or outline to edit it. Use **Hide annotations / Show annotations** and **Delete selected region**, or delete from the reporting panel.
+6. **Document:** edit the eight report sections. Findings are organized under rotator cuff, long head of biceps, labrum, AC joint, glenohumeral joint/cartilage, bones/marrow, and other soft tissues. Add/remove findings and numbered impression statements. No diagnostic content is generated.
+7. **Connect images and findings:** in **G. Image annotations**, edit descriptions and link a region to a finding. **Show region** or **Show linked region** navigates to the matching study/series/SOP/frame if its files are loaded. Missing images produce an error without deleting saved regions.
+8. **Export:** **Export PDF** downloads a readable report; **Save Draft (JSON)** preserves all editable fields and region geometry. **Import JSON** replaces the current draft, so save it first.
 
-“Reviewed” is a user-set workflow label. It is not a clinical signature or an approval mechanism. Sources remain explicit: clinician entered, dataset label, or simulated. Imported context marked as non-fictional is preserved and shown as imported/unverified.
+Context, report edits, original file handles, and annotations stay in browser memory. Switching slices, series, or the overview preserves report data. Refreshing or closing the page loses unsaved edits. Reimport image files after reopening a JSON draft; images are not embedded in it.
 
-Report files use the application's versioned JSON schema, with strict field/type validation, a 1,000,000-byte limit, and at most 1,000 findings. Unsupported schema versions and unknown fields are rejected rather than silently discarded. **This JSON is not standards-compliant DICOM Structured Reporting.** DICOM SR / TID 1500 export is a future feature.
+## Reports and compatibility
 
-## Image support and current limits
+The report contains examination information, clinical history/indication, technique, comparison, anatomical findings, numbered impressions, manual region references, and draft/user-reviewed status. A user-reviewed label is a workflow marker, not formal clinical approval or a physician signature.
 
-- Genuine DICOM pixel decoding/rendering uses Cornerstone3D and its DICOM image loader. The dark empty viewport explicitly asks for an import when no images are available.
-- Import accepts DICOM Part 10 image files with a `DICM` header and pixel data. ZIP archives, DICOMDIR catalogs, raw datasets without a Part 10 header, and non-image objects are not supported.
-- Import is limited to 2,000 files and 512 MiB per selection to bound browser memory use. Import one series at a time if needed. Original local `File` objects and their bytes are retained without alteration.
-- Instances are ordered by `InstanceNumber`; this is a simple review stack, not a validated spatial reconstruction. There is no multiplanar reconstruction, measurement tool, lesion localization, or diagnostic overlay.
-- Multi-frame instances are expanded into the navigation stack; this does not imply full support for enhanced MRI geometry or metadata.
-- Transfer-syntax and browser support vary. Decoder failures appear in the viewport; malformed files are skipped with import notes. Real shoulder MRI files and the full range of compressed/enhanced DICOM objects remain unverified.
+- JSON schema 2 preserves the original fields and new report sections. Original schema 1 drafts are strictly validated and migrated without losing text, findings, source labels, identifiers, or stored study references. Legacy findings enter **Other soft tissues** rather than inferring their anatomy.
+- Reports are limited to 1,000,000 UTF-8 bytes, 1,000 findings,1,000 annotations, and 1,000 impression statements. Malformed files, unsupported schemas, invalid coordinates/references, duplicate IDs, and dangling finding links are rejected with an error. Deleting a linked finding removes its links while preserving the regions.
+- Manual regions store four Cornerstone world-coordinate corners, viewing plane, description, linked finding, study/series/SOP UIDs, and one-based frame number. Saved stack index is descriptive; navigation resolves stable SOP/frame identity. Imported image bytes are never serialized.
+- PDF and JSON use the same current validated report snapshot. PDF includes unavailable fields as **Not provided.**, all authored report sections, source/review labels, and manual annotation references/descriptions. It paginates long text and includes the research disclaimer on each page.
+- PDF is a **static printable document, not a fillable form**. Keep JSON for continued editing. PDF edits do not synchronize with the application. The bundled DejaVu font supports many scripts; unsupported characters produce an explicit export error rather than silently dropping text. JSON preserves Unicode text.
+- Neither JSON nor PDF is a standards-compliant DICOM Structured Report. DICOM SR / TID 1500 is future work.
 
-No real MRI dataset is bundled. The automated browser test fixture is generated from original, nonanatomical pixel patterns in memory. It contains no patient information and verifies a narrow synthetic uncompressed DICOM path; it does not establish clinical validity or compatibility with real shoulder MRI acquisitions.
+## DICOM support and limitations
 
-## Data sources, privacy, and licensing
+Cornerstone3D performs real pixel decoding/rendering. Native Cornerstone RectangleROI tools keep outlines aligned through zoom, pan, and viewport resize. Annotations remain on their original image/frame during slice navigation and are restored from JSON when matching files are loaded. Only rectangles are implemented in this milestone; no ellipses, AI heatmaps, or automated localization.
 
-SCOPE-MRI is an intended future research dataset. Its MIDRC download currently returns **401 Unauthorized according to the project owner's report**; access has not been obtained or independently verified here. The application does not attempt to bypass this restriction and does not require the dataset to run.
+Import accepts DICOM Part 10 image files with a `DICM` header, including extensionless files. ZIP archives, DICOMDIR catalogs, raw datasets without that header, NIfTI files, and non-image objects are unsupported. Up to 2,000 files and 512 MiB may be selected per import. Import one series at a time if needed.
 
-Use only data you are permitted to access and have appropriately de-identified before import. **Do not use real patient identifiers or other PHI in this prototype.** The app does not anonymize DICOM metadata or inspect it for identifying content. It has no authentication, clinical audit trail, or persistence service.
+Files are grouped by study/series UIDs and ordered by InstanceNumber. Missing grouping UIDs are handled conservatively. Flagging requires valid study, series, and SOP instance UIDs; the toolbar explains missing references. This is a simple image stack, not a validated spatial reconstruction. Enhanced MRI geometry, all transfer syntaxes, and all browsers are not verified. Decoder errors preserve the report and allow trying another frame/series.
 
-- Local DICOM files and report contents are handled in the browser, without application uploads, third-party telemetry, or cloud inference. The development server serves code and assets; it is not a data-upload service.
-- Reports are downloaded only when you export them. Treat exported text and study UIDs as potentially sensitive; store and share them appropriately.
-- Do not commit imaging datasets or exported reports. Root `data/`, `datasets/`, and `sample-data/` folders and `.dcm`/`.dicom` files are ignored; these patterns do not identify every possible data filename.
-- No third-party imaging dataset is redistributed with the app. Imported datasets retain their source's access, license, and use restrictions. The synthetic test fixture is generated from simple original pixels, rather than copied from an external imaging collection.
-- React, Cornerstone3D, and `dicom-parser` are free dependencies distributed under their respective MIT licenses. Their notices remain in the installed packages; dataset permission is a separate requirement.
+The project owner reports successful review of a real 96-image SCOPE-MRI series in the original viewer. Those files are not available in this checkout, so the new controls/ROI workflow is tested using original synthetic uncompressed DICOM patterns, not revalidated against that real study. These checks establish software behavior, not clinical accuracy.
+
+## Privacy and data sources
+
+Use only permitted, appropriately de-identified research data. Do not enter real patient identifiers or PHI. This app does not anonymize DICOM metadata or detect identifying content. It has no authentication, clinical audit trail, or persistence service.
+
+All DICOM decoding, annotations, reports, PDF generation, and JSON handling occur locally in the browser. There are no application uploads, third-party telemetry, or cloud APIs. The app serves fonts, codecs, and workers locally; installation requires access to the npm registry.
+
+SCOPE-MRI is an external research dataset. Access, license, and use restrictions remain the dataset user's responsibility; the app neither requires access nor bypasses access controls. Do not commit datasets, patient data, exported reports, or credentials. Root `data/`, `datasets/`, `sample-data/` and DICOM filename extensions are ignored, but this cannot identify every sensitive filename. No imaging datasets are redistributed. Synthetic browser test patterns are generated in memory by `e2e/syntheticDicom.ts`.
+
+Dependency notices remain in installed packages. The bundled DejaVuSans font and its redistribution terms are in `src/assets/DejaVuSans-LICENSE.txt`.
 
 ## Architecture
 
-The small setup is React + TypeScript + Vite, with no application backend, database, PACS server, or authentication system.
-
-| File | Responsibility |
-| --- | --- |
-| `src/App.tsx` | Overview, session state, import/export controls, context, and findings editor |
-| `src/domain.ts` | `Study`, `Series`, `DicomInstance`, `ClinicalContext`, `Finding`, and `Report` types |
-| `src/components/DicomViewer.tsx` | Lazy-loaded Cornerstone viewport and image interactions |
-| `src/data/dicom.ts` | Local metadata parsing, bounded import, UID grouping, and original-file references |
-| `src/data/demo.ts` | Explicitly fictional history and simulated teaching entries |
-| `src/data/reports.ts` | Strict JSON validation, serialization, and new finding creation |
-| `src/data/datasetMapping.ts` | Future adapter boundary for explicitly supplied study-level dataset labels |
-| `src/data/aiSuggestions.ts` | Interface for future clinician-reviewed clinical-summary suggestions; no implementation or network call |
-
-Study-level annotation labels must remain text annotations. They do not supply lesion coordinates and must never be converted into localization overlays. No SCOPE-MRI schema, annotation mapping, or access is assumed by the current adapter. Future AI summaries and clinician-reviewed areas of interest require separate research, validation, and integration work.
+| Module                                     | Responsibility                                                                     |
+| ------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `src/App.tsx`                              | Workspace session, local imports, explicit association, navigation, export actions |
+| `src/components/ClinicalContextEditor.tsx` | Editable context and recorded provenance                                           |
+| `src/components/ReportEditor.tsx`          | Structured sections, anatomical findings, impression, region descriptions/links    |
+| `src/components/DicomViewer.tsx`           | Existing decoder/viewport, display controls, native manual rectangle integration   |
+| `src/domain.ts` / `src/data/reports.ts`    | Versioned model, validation, lossless legacy migration and serialization           |
+| `src/data/annotations.ts`                  | Stable image/frame references and annotation lookup                                |
+| `src/data/pdf.ts`                          | Locally generated multi-page PDF from validated report data                        |
+| `src/data/dicom.ts`                        | Metadata parsing, import bounds/grouping, immutable original File references       |
+| `src/data/datasetMapping.ts`               | Explicit study-label adapter boundary; labels never create localization overlays   |
+| `src/data/aiSuggestions.ts`                | Future integration interface; no AI implementation or network calls                |
 
 ## Validation
 
@@ -81,34 +85,29 @@ npm run lint
 npm run build
 ```
 
-Vitest tests cover report edits and JSON roundtrips, provenance, malformed/oversized imports, study-level annotation mapping, DICOM metadata grouping, and error handling.
-
-Optional browser checks use Playwright. Install Chromium once, then run:
+Browser tests require Chromium:
 
 ```sh
 npx playwright install chromium
 npm run test:e2e
 ```
 
-If Chromium is already installed in the cloud environment, use its actual executable path instead:
+In the cloud environment, existing Chromium can be used:
 
 ```sh
 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
 ```
 
-The browser suite starts its own local Vite server. Its synthetic DICOM checks supplement unit tests; they do not verify real MRI data, all transfer syntaxes, or clinical accuracy.
-
-### Verified in this environment
-
-A clean `npm ci` completed with Node 24.19.0 / npm 11.9.0. TypeScript + production build and ESLint passed; **32 unit tests** and **4 browser tests** passed. The browser suite passed against both a fresh development server and the production preview using installed Chromium. It checks edited JSON values, invalid imports, visible synthetic DICOM pixels, frame/wheel navigation, pan, zoom, window/level, draft retention, and recovery from a malformed compressed frame.
-
-The build emits dependency warnings for optional Node-only codec/XML branches and a large lazy viewer chunk (about 3 MB before compression). The tested browser workflow works despite those warnings. Real MRI acquisitions, valid compressed image formats, enhanced MRI geometry, and clinical accuracy have not been validated.
-
-To repeat the production browser checks, stop any existing server on port 5173, then run:
+The browser suite covers context/report editing, JSON value equality and legacy migration, explicit association, paginated PDF download, DICOM rendering and existing controls, manual ROI creation/editing/deletion/visibility, frame isolation, native outline transforms, linked navigation, and JSON restoration. It starts or reuses a local Vite server. For a production check, stop any existing server on port 5173, run the build, then:
 
 ```sh
-npm run build
 PLAYWRIGHT_USE_PREVIEW=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
 ```
 
-Code can be formatted with `npm run format`. The synthetic pixel-pattern generator lives in `e2e/syntheticDicom.ts`; no generated DICOM files or external imaging datasets are checked in.
+Cornerstone/codec builds are substantial and cold startup/build can take time. Browser tests allow 90 seconds for cold initialization. Build warnings about optional Node-only codec/XML branches and large lazy chunks remain; browser functionality must be verified separately from compilation. `npm run format` formats source files.
+
+### Checks completed for this update
+
+A frozen `npm ci`, TypeScript/production build, ESLint, and all **68 unit tests** pass. All **8 browser tests** pass in development and against the production preview, including native rectangle geometry editing and restoration. PDF text extraction verifies the latest authored values and the long-history tail across an **8-page** report. The wider-screen reporting panel scrolls independently beside the image; narrow screens retain a single-column layout.
+
+Fillable PDF forms are deliberately deferred. The current PDF is reliable and printable; JSON preserves complete editing. Real SCOPE-MRI files are not bundled or available for repeat testing in this environment, so test the new workflow with your permitted local series before relying on dataset-specific compatibility.

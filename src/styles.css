@@ -786,3 +786,152 @@ summary {
   color: #dbe6f0;
   margin: 0;
 }
+
+/* Structured reporting extends the existing workspace without changing the overview. */
+.report-section {
+  border-top: 1px solid #dce4ec;
+  padding: 16px 0;
+}
+.report-section > summary {
+  font-size: 13px;
+  color: #19324b;
+  font-weight: 650;
+}
+.section-content {
+  padding-top: 14px;
+}
+.report-section h3 {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.finding-category {
+  margin: 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e3eaf0;
+}
+.finding-category h4 {
+  font-size: 12px;
+  color: #49677f;
+  margin: 0 0 10px;
+}
+.category-add {
+  font-size: 11px;
+  padding: 6px 9px;
+}
+.check-label {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-weight: 400;
+}
+.check-label input {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+}
+.report-export-actions {
+  padding: 0 0 16px;
+}
+.export-pdf {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+}
+.report-export-actions p {
+  margin-top: 10px;
+  font-size: 11px;
+}
+.uid,
+.annotation-reference dd {
+  overflow-wrap: anywhere;
+}
+.association-box {
+  padding: 12px;
+  background: #f3f7fa;
+  border: 1px solid #dce5ed;
+  border-radius: 5px;
+}
+.association-box .text-button {
+  display: block;
+  margin-top: 12px;
+}
+.association-warning {
+  color: #8a5335;
+  margin-top: 10px;
+}
+.annotation-card {
+  padding: 12px;
+  margin: 12px 0;
+  border: 1px solid #c8d6e1;
+  border-radius: 5px;
+}
+.annotation-card.selected {
+  border: 2px solid #286b9f;
+  padding: 11px;
+  background: #f4f9fd;
+}
+.annotation-jump {
+  color: #24618e;
+  font-size: 11px;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.annotation-reference {
+  font-size: 10px;
+  display: grid;
+  grid-template-columns: 75px minmax(0, 1fr);
+  gap: 3px 9px;
+}
+.annotation-reference dd {
+  margin: 0;
+  color: #4a6175;
+}
+.impression-row {
+  position: relative;
+}
+.impression-row .text-button {
+  margin: -6px 0 12px;
+}
+.dicom-toolbar {
+  min-width: 0;
+}
+.dicom-toolbar input[type="number"] {
+  max-width: 100px;
+}
+@media (min-width: 1100px) {
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1.5fr) minmax(400px, 1fr);
+  }
+}
+@media (max-width: 780px) {
+  .annotation-reference {
+    grid-template-columns: 55px minmax(0, 1fr);
+  }
+}
+
+/* Scroll the desktop report independently while reviewing the adjacent image. */
+@media (min-width: 781px) {
+  .findings-panel {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+  .findings-panel > .panel-heading {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: #fff;
+  }
+  .findings-panel .report-export-actions {
+    position: sticky;
+    top: 56px;
+    z-index: 3;
+    padding-top: 12px;
+    background: #fff;
+    border-bottom: 1px solid #dce4ec;
+  }
+}

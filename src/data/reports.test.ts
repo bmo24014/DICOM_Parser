@@ -14,6 +14,7 @@ describe("workspace JSON reports", () => {
     report.studyInstanceUID = "1.2.840.10008.123";
     report.findings[0] = {
       id: "edited-finding",
+      category: "Rotator cuff",
       structure: "Subscapularis tendon",
       observation: 'User-authored observation with "quotes" and <plain text>.',
       laterality: "left",
@@ -55,7 +56,7 @@ describe("workspace JSON reports", () => {
 
   it("rejects unsupported schema versions and missing required fields", () => {
     expect(() =>
-      parseReport(JSON.stringify({ ...demoReport, schemaVersion: 2 })),
+      parseReport(JSON.stringify({ ...demoReport, schemaVersion: 99 })),
     ).toThrow("Unsupported report schemaVersion");
     const missingContext: Record<string, unknown> = { ...demoReport };
     delete missingContext.clinicalContext;
@@ -170,5 +171,258 @@ describe("study-level dataset adapter boundary", () => {
         labels: [" "],
       }),
     ).toThrow("must contain text");
+  });
+});
+
+describe("version 2 report model and legacy migration", () => {
+  function legacyDraft() {
+    return {
+      schemaVersion: 1,
+      id: "legacy-draft",
+      studyInstanceUID: "1.2.3.4",
+      clinicalContext: {
+        id: "legacy-context",
+        fictional: false,
+        history: "Original history\nwith second line.",
+        summary: "Original summary — unchanged.",
+      },
+      findings: [
+        {
+          id: "legacy-one",
+          structure: "Tendon",
+          observation: "Previously entered text",
+          laterality: "left",
+          reviewStatus: "reviewed",
+          source: "clinician entered",
+          note: "Original note",
+        },
+        {
+          id: "legacy-two",
+          structure: "Joint",
+          observation: "",
+          laterality: "unspecified",
+          reviewStatus: "draft",
+          source: "simulated",
+        },
+      ],
+    };
+  }
+
+  function annotatedDraft(): Report {
+    const report = freshReport();
+    report.clinicalContext = {
+      ...report.clinicalContext,
+      fictional: false,
+      caseIdentifier: "Deidentified case X",
+      provenance: "manual",
+      indication: "Authored indication",
+      history: "Edited history",
+      summary: "Edited summary",
+      notes: "Additional symptoms",
+    };
+    report.examination = {
+      type: "Shoulder MRI",
+      laterality: "left",
+      date: "2026-02-28",
+    };
+    report.technique = {
+      acquisition: "Manually entered acquisition",
+      contrast: "Not supplied",
+    };
+    report.comparison = "Prior study reference entered manually";
+    report.impression = ["First user-authored statement.", "Second statement."];
+    report.status = "reviewed";
+    report.annotations = [
+      {
+        id: "manual-region-01",
+        source: "manual",
+        shape: "rectangle",
+        description: "User flagged region",
+        findingId: report.findings[0].id,
+        reference: {
+          studyInstanceUID: "1.2.3",
+          seriesInstanceUID: "1.2.3.1",
+          sopInstanceUID: "1.2.3.1.1",
+          frameNumber: 1,
+          sliceIndex: 0,
+        },
+        points: [
+          [10, 20, 0],
+          [30, 20, 0],
+          [10, 40, 0],
+          [30, 40, 0],
+        ],
+        viewPlaneNormal: [0, 0, 1],
+        viewUp: [0, -1, 0],
+      },
+    ];
+    return report;
+  }
+
+  it("migrates original exports while preserving every old context and finding field", () => {
+    const legacy = legacyDraft();
+    const migrated = parseReport(JSON.stringify(legacy));
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.id).toBe(legacy.id);
+    expect(migrated.studyInstanceUID).toBe(legacy.studyInstanceUID);
+    expect(migrated.clinicalContext).toMatchObject(legacy.clinicalContext);
+    expect(migrated.clinicalContext).toMatchObject({
+      provenance: "imported",
+      caseIdentifier: "",
+      indication: "",
+      notes: "",
+    });
+    for (const [index, finding] of migrated.findings.entries()) {
+      const { category, ...original } = finding;
+      expect(original).toEqual(legacy.findings[index]);
+      expect(category).toBe("Other soft tissues");
+    }
+    expect(migrated.examination).toEqual({
+      type: "",
+      laterality: "unspecified",
+      date: "",
+    });
+    expect(migrated.impression).toEqual([]);
+    expect(migrated.annotations).toEqual([]);
+    expect(migrated.status).toBe("draft");
+    expect(JSON.parse(serializeReport(migrated)).schemaVersion).toBe(2);
+  });
+
+  it("preserves fictional legacy provenance while marking the file imported", () => {
+    const legacy = legacyDraft();
+    legacy.clinicalContext.fictional = true;
+    expect(parseReport(JSON.stringify(legacy)).clinicalContext).toMatchObject({
+      fictional: true,
+      provenance: "imported",
+    });
+  });
+
+  it("rejects malformed legacy drafts instead of dropping their fields during migration", () => {
+    const legacy = legacyDraft();
+    expect(() =>
+      parseReport(JSON.stringify({ ...legacy, unrecognized: "keep me" })),
+    ).toThrow("unsupported field");
+    legacy.findings[0].laterality = "invalid";
+    expect(() => parseReport(JSON.stringify(legacy))).toThrow("laterality");
+  });
+
+  it("round-trips all structured sections, world coordinates, provenance, and linked findings", () => {
+    const report = annotatedDraft();
+    expect(parseReport(serializeReport(report))).toEqual(report);
+    expect(serializeReport(report)).not.toContain("pixelData");
+  });
+
+  it.each([
+    ["points", [[1, 2, 3]]],
+    [
+      "points",
+      [
+        [1, 2, 3],
+        [1, 2, 3],
+        [1, 2, 3],
+        [null, 2, 3],
+      ],
+    ],
+    ["viewPlaneNormal", [0, 1]],
+    ["source", "AI generated"],
+    ["shape", "ellipse"],
+    ["findingId", "missing-finding"],
+  ])("rejects invalid annotation %s", (key, value) => {
+    const report = annotatedDraft();
+    Object.assign(report.annotations[0], { [key]: value });
+    expect(() => parseReport(JSON.stringify(report))).toThrow();
+  });
+
+  it.each([
+    ["viewPlaneNormal", [0, 0, 0]],
+    ["viewUp", [0, 0, 0]],
+    ["viewUp", [0, 0, 2]],
+    ["viewUp", [0, 0, -3]],
+  ])("rejects a zero or parallel annotation orientation: %s", (key, value) => {
+    const report = annotatedDraft();
+    Object.assign(report.annotations[0], { [key]: value });
+    expect(() => parseReport(JSON.stringify(report))).toThrow(
+      "nonzero, nonparallel",
+    );
+  });
+
+  it("rejects duplicate rectangle corners, including a duplicated fourth handle", () => {
+    for (const duplicateIndex of [1, 2, 3]) {
+      const report = annotatedDraft();
+      report.annotations[0].points[duplicateIndex] = [
+        ...report.annotations[0].points[0],
+      ];
+      expect(() => serializeReport(report)).toThrow(
+        "distinct rectangle corners",
+      );
+    }
+  });
+
+  it("rejects a collapsed rectangle whose distinct corners are collinear", () => {
+    const report = annotatedDraft();
+    report.annotations[0].points = [
+      [0, 0, 0],
+      [1, 2, 3],
+      [2, 4, 6],
+      [3, 6, 9],
+    ];
+    expect(() => parseReport(JSON.stringify(report))).toThrow("nonzero area");
+  });
+
+  it("accepts non-unit orientation vectors and small, nondegenerate rectangles without changing them", () => {
+    const report = annotatedDraft();
+    report.annotations[0].viewPlaneNormal = [0, 0, 5];
+    report.annotations[0].viewUp = [0, -0.25, 0];
+    report.annotations[0].points = [
+      [0, 0, 0],
+      [0.00001, 0, 0],
+      [0, 0.00001, 0],
+      [0.00001, 0.00001, 0],
+    ];
+    expect(parseReport(serializeReport(report))).toEqual(report);
+  });
+
+  it.each([
+    ["frameNumber", 0],
+    ["frameNumber", 1.5],
+    ["sliceIndex", -1],
+    ["sliceIndex", 0.1],
+    ["sopInstanceUID", ""],
+  ])("rejects invalid image reference %s", (key, value) => {
+    const report = annotatedDraft();
+    Object.assign(report.annotations[0].reference, { [key]: value });
+    expect(() => parseReport(JSON.stringify(report))).toThrow();
+  });
+
+  it("rejects duplicate annotations, unknown categories, unknown provenance, and invalid dates", () => {
+    const report = annotatedDraft();
+    report.annotations.push(structuredClone(report.annotations[0]));
+    expect(() => serializeReport(report)).toThrow("unique id");
+    report.annotations.pop();
+    Object.assign(report.findings[0], { category: "Unknown anatomy" });
+    expect(() => serializeReport(report)).toThrow("category");
+    report.findings[0].category = "Rotator cuff";
+    Object.assign(report.clinicalContext, { provenance: "inferred" });
+    expect(() => serializeReport(report)).toThrow("provenance");
+    report.clinicalContext.provenance = "manual";
+    report.examination.date = "2026-02-30";
+    expect(() => serializeReport(report)).toThrow("valid YYYY-MM-DD");
+  });
+
+  it("rejects unknown v2 fields and truncated required sections", () => {
+    expect(() =>
+      parseReport(JSON.stringify({ ...demoReport, pixels: [1, 2, 3] })),
+    ).toThrow("unsupported field");
+    const missing: Record<string, unknown> = { ...demoReport };
+    delete missing.examination;
+    expect(() => parseReport(JSON.stringify(missing))).toThrow(
+      "examination is required",
+    );
+  });
+
+  it("does not silently migrate or save a legacy runtime value without validation", () => {
+    expect(() => serializeReport(legacyDraft() as unknown as Report)).toThrow(
+      "Unsupported report schemaVersion",
+    );
   });
 });

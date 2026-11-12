@@ -2,11 +2,15 @@ import type { Report } from "../domain";
 
 /** Entirely fictional teaching content; no images or image-derived claims. */
 export const demoReport: Report = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "fictional-shoulder-demo",
   clinicalContext: {
     id: "fictional-context-01",
     fictional: true,
+    caseIdentifier: "Fictional case 01",
+    provenance: "simulated",
+    indication: "",
+    notes: "",
     history:
       "Fictional scenario: an adult describes six months of right shoulder discomfort " +
       "during overhead activity. No prior surgery is described. This history was " +
@@ -15,9 +19,16 @@ export const demoReport: Report = {
       "Manually authored fictional summary: persistent right shoulder discomfort " +
       "with overhead activity. Imaging has not been reviewed. No diagnosis is inferred.",
   },
+  examination: { type: "", laterality: "unspecified", date: "" },
+  technique: { acquisition: "", contrast: "" },
+  comparison: "",
+  impression: [],
+  status: "draft",
+  annotations: [],
   findings: [
     {
       id: "demo-finding-01",
+      category: "Rotator cuff",
       structure: "Supraspinatus tendon",
       observation:
         "Simulated teaching entry: document tendon appearance after image review.",
@@ -28,6 +39,7 @@ export const demoReport: Report = {
     },
     {
       id: "demo-finding-02",
+      category: "Glenohumeral joint and cartilage",
       structure: "Glenohumeral joint",
       observation:
         "Simulated teaching entry: add an observation after image review.",

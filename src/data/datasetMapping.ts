@@ -24,7 +24,7 @@ export function mapStudyLabelsToFindings(input: DatasetStudyLabels): Finding[] {
     throw new Error("Each dataset label must contain text.");
   }
   return input.labels.map((label) => ({
-    ...createFinding(),
+    ...createFinding("Other soft tissues"),
     structure: "Study-level dataset annotation",
     observation: label,
     source: "dataset label",
