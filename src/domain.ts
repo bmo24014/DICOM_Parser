@@ -28,6 +28,16 @@ export const CLINICAL_CONTEXT_PROVENANCES = [
 ] as const;
 export type ClinicalContextProvenance =
   (typeof CLINICAL_CONTEXT_PROVENANCES)[number];
+/** Provenance belongs to the summary, not the source clinical history. */
+export type SummaryProvenance =
+  | { origin: "manual" | "legacy-unknown" }
+  | {
+      origin: "ai-assisted" | "edited-ai-assisted";
+      model: string;
+      generatedAt: string;
+      acceptance: "user-accepted";
+      sourceFingerprint: string;
+    };
 export interface ClinicalContext {
   id: string;
   fictional: boolean;
@@ -37,6 +47,7 @@ export interface ClinicalContext {
   indication: string;
   /** Authored text, separate from image-derived findings. */
   summary: string;
+  summaryProvenance: SummaryProvenance;
   notes: string;
 }
 
@@ -99,7 +110,7 @@ export interface ManualAnnotation {
 }
 
 export interface Report {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   /** Set only after explicit user association; importing files does not set this. */
   studyInstanceUID?: string;

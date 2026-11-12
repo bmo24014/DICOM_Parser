@@ -138,3 +138,51 @@ describe("PDF report presentation", () => {
     );
   });
 });
+
+describe("PDF summary provenance", () => {
+  const summaryText = (report: typeof demoReport) =>
+    reportSections(report)[1].fields.find(
+      (field) => field.label === "Summary provenance / acceptance",
+    )!.value;
+  it("distinguishes manual and legacy summaries without claiming AI generation", () => {
+    const report = structuredClone(demoReport);
+    expect(summaryText(report)).toBe("Manually authored summary.");
+    report.clinicalContext.summaryProvenance = { origin: "legacy-unknown" };
+    expect(summaryText(report)).toContain("authorship was not recorded");
+    expect(summaryText(report)).not.toContain("AI-assisted summary");
+  });
+
+  it("includes accepted model and review labels and detects changed source context", async () => {
+    const { sourceFingerprint, summarySource } =
+      await import("./summarySource");
+    const report = structuredClone(demoReport);
+    report.clinicalContext.summary = "Accepted summary text";
+    report.clinicalContext.summaryProvenance = {
+      origin: "ai-assisted",
+      model: "qwen2.5:1.5b",
+      generatedAt: "2026-11-12T14:30:00Z",
+      acceptance: "user-accepted",
+      sourceFingerprint: sourceFingerprint(
+        summarySource(report.clinicalContext),
+      ),
+    };
+    expect(summaryText(report)).toContain("model: qwen2.5:1.5b");
+    expect(summaryText(report)).toContain(
+      "user-accepted, not clinical approval",
+    );
+    expect(summaryText(report)).toContain("Source context matches");
+    report.clinicalContext.notes = "New source information";
+    expect(summaryText(report)).toContain("Source context has changed");
+    report.clinicalContext.summaryProvenance.origin = "edited-ai-assisted";
+    expect(summaryText(report)).toContain("Edited AI-assisted");
+    const pdf = await PDFDocument.load(
+      await generateReportPdf(report, fontBytes),
+    );
+    expect(pdf.getPageCount()).toBeGreaterThan(0);
+    expect(
+      reportSections(report)[1].fields.find(
+        (field) => field.label === "Patient summary",
+      )?.value,
+    ).toBe("Accepted summary text");
+  });
+});

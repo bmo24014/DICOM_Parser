@@ -17,6 +17,7 @@
     "@cornerstonejs/dicom-image-loader": "5.11.7",
     "@cornerstonejs/metadata": "5.11.7",
     "@cornerstonejs/tools": "5.11.7",
+    "@noble/hashes": "2.0.1",
     "@pdf-lib/fontkit": "1.1.1",
     "dicom-parser": "1.8.21",
     "events": "3.3.0",

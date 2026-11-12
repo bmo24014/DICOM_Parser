@@ -10,6 +10,7 @@ import {
   type ImageReference,
   type ManualAnnotation,
   type Report,
+  type SummaryProvenance,
 } from "../domain";
 
 const MAX_JSON_BYTES = 1_000_000;
@@ -67,7 +68,74 @@ function list(value: unknown, path: string): unknown[] {
   return value;
 }
 
-function context(value: unknown, legacy: boolean): ClinicalContext {
+function summaryProvenance(value: unknown): SummaryProvenance {
+  const path = "clinicalContext.summaryProvenance";
+  const candidate = object(
+    value,
+    path,
+    ["origin"],
+    ["model", "generatedAt", "acceptance", "sourceFingerprint"],
+  );
+  const origin = member(
+    candidate.origin,
+    ["manual", "legacy-unknown", "ai-assisted", "edited-ai-assisted"],
+    `${path}.origin`,
+  );
+  if (origin === "manual" || origin === "legacy-unknown") {
+    object(value, path, ["origin"]);
+    return { origin };
+  }
+  const result = object(value, path, [
+    "origin",
+    "model",
+    "generatedAt",
+    "acceptance",
+    "sourceFingerprint",
+  ]);
+  const generatedAt = text(
+    result.generatedAt,
+    `${path}.generatedAt`,
+    40,
+    false,
+  );
+  // Accept a complete ISO timestamp with an explicit timezone; reject rollover dates.
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(
+      generatedAt,
+    ) ||
+    Number.isNaN(Date.parse(generatedAt)) ||
+    new Date(`${generatedAt.slice(0, 10)}T00:00:00Z`)
+      .toISOString()
+      .slice(0, 10) !== generatedAt.slice(0, 10)
+  )
+    throw new Error(
+      `${path}.generatedAt must be a valid ISO timestamp with timezone.`,
+    );
+  const fingerprint = text(
+    result.sourceFingerprint,
+    `${path}.sourceFingerprint`,
+    64,
+    false,
+  );
+  if (!/^[0-9a-f]{64}$/.test(fingerprint))
+    throw new Error(
+      `${path}.sourceFingerprint must be a lowercase SHA-256 fingerprint.`,
+    );
+  return {
+    origin,
+    model: text(result.model, `${path}.model`, 200, false),
+    generatedAt,
+    acceptance: member(
+      result.acceptance,
+      ["user-accepted"],
+      `${path}.acceptance`,
+    ),
+    sourceFingerprint: fingerprint,
+  };
+}
+
+function context(value: unknown, version: number): ClinicalContext {
+  const legacy = version === 1;
   const result = object(
     value,
     "clinicalContext",
@@ -82,6 +150,7 @@ function context(value: unknown, legacy: boolean): ClinicalContext {
           "provenance",
           "indication",
           "notes",
+          ...(version === 3 ? ["summaryProvenance"] : []),
         ],
   );
   if (typeof result.fictional !== "boolean")
@@ -91,6 +160,10 @@ function context(value: unknown, legacy: boolean): ClinicalContext {
     fictional: result.fictional,
     history: text(result.history, "clinicalContext.history", 20_000),
     summary: text(result.summary, "clinicalContext.summary", 10_000),
+    summaryProvenance:
+      version === 3
+        ? summaryProvenance(result.summaryProvenance)
+        : { origin: "legacy-unknown" },
     caseIdentifier: legacy
       ? ""
       : text(result.caseIdentifier, "clinicalContext.caseIdentifier", 200),
@@ -296,9 +369,9 @@ function validateReport(value: unknown, acceptLegacy: boolean): Report {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     throw new Error("Report must be an object.");
   const version = (value as Record<string, unknown>).schemaVersion;
-  if (version !== 2 && !(acceptLegacy && version === 1))
+  if (version !== 3 && !(acceptLegacy && (version === 1 || version === 2)))
     throw new Error(
-      "Unsupported report schemaVersion. This application imports versions 1 and 2 and saves version 2.",
+      "Unsupported report schemaVersion. This application imports versions 1, 2 and 3 and saves version 3.",
     );
   const legacy = version === 1;
   const keys = ["schemaVersion", "id", "clinicalContext", "findings"];
@@ -324,9 +397,9 @@ function validateReport(value: unknown, acceptLegacy: boolean): Report {
   if (new Set(findings.map((entry) => entry.id)).size !== findings.length)
     throw new Error("Each finding must have a unique id.");
   const parsed: Report = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: text(result.id, "Report.id", 200, false),
-    clinicalContext: context(result.clinicalContext, legacy),
+    clinicalContext: context(result.clinicalContext, version as number),
     examination: { type: "", laterality: "unspecified", date: "" },
     technique: { acquisition: "", contrast: "" },
     comparison: "",
@@ -399,7 +472,7 @@ function validateReport(value: unknown, acceptLegacy: boolean): Report {
   return parsed;
 }
 
-/** Validate untrusted JSON before replacing workspace state; migrate original v1 drafts without losing text. */
+/** Validate untrusted JSON before replacing workspace state; migrate v1/v2 drafts without losing text or inventing AI provenance. */
 export function parseReport(json: string): Report {
   if (
     json.length > MAX_JSON_BYTES ||
@@ -419,7 +492,7 @@ export function parseReport(json: string): Report {
   return validateReport(value, true);
 }
 
-/** Export only the complete version 2 application format, never DICOM bytes or DICOM SR. */
+/** Export only the complete version 3 application format, never DICOM bytes or DICOM SR. */
 export function serializeReport(report: Report): string {
   const json = JSON.stringify(validateReport(report, false), null, 2);
   if (

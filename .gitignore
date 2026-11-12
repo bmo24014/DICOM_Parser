@@ -16,3 +16,5 @@ test-results/
 /exports/
 shoulder-workspace-report*.json
 shoulder-workspace-report*.pdf
+.ollama/
+*.gguf

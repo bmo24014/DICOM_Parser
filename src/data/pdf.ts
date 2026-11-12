@@ -1,8 +1,13 @@
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import fontUrl from "../assets/DejaVuSans.ttf?url";
-import { FINDING_CATEGORIES, type Report } from "../domain";
+import {
+  FINDING_CATEGORIES,
+  type ClinicalContext,
+  type Report,
+} from "../domain";
 import { parseReport, serializeReport } from "./reports";
+import { sourceFingerprint, summarySource } from "./summarySource";
 
 export const PDF_DISCLAIMER =
   "Educational research prototype — Not for clinical use.";
@@ -12,6 +17,18 @@ export interface ReportSection {
 }
 const provided = (value: string | undefined) =>
   value?.trim() ? value : "Not provided.";
+
+function summaryLabel(context: ClinicalContext): string {
+  const provenance = context.summaryProvenance;
+  if (!("model" in provenance)) {
+    return provenance.origin === "manual"
+      ? "Manually authored summary."
+      : "Legacy summary: authorship was not recorded. No AI provenance is inferred.";
+  }
+  const changed =
+    sourceFingerprint(summarySource(context)) !== provenance.sourceFingerprint;
+  return `${provenance.origin === "edited-ai-assisted" ? "Edited AI-assisted" : "AI-assisted"} summary; model: ${provenance.model}; generated: ${provenance.generatedAt}; user-accepted, not clinical approval. ${changed ? "Source context has changed since generation; review the summary again." : "Source context matches the generation fingerprint."}`;
+}
 
 /** One presentation model shared by all PDF pages. Empty fields stay explicit. */
 export function reportSections(report: Report): ReportSection[] {
@@ -58,8 +75,12 @@ export function reportSections(report: Report): ReportSection[] {
         },
         { label: "Clinical history", value: provided(context.history) },
         {
-          label: "Patient summary (manually authored)",
+          label: "Patient summary",
           value: provided(context.summary),
+        },
+        {
+          label: "Summary provenance / acceptance",
+          value: summaryLabel(context),
         },
         {
           label: "Relevant symptoms / additional clinical notes",

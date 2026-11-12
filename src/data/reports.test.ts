@@ -174,7 +174,7 @@ describe("study-level dataset adapter boundary", () => {
   });
 });
 
-describe("version 2 report model and legacy migration", () => {
+describe("structured report model and legacy migration", () => {
   function legacyDraft() {
     return {
       schemaVersion: 1,
@@ -262,7 +262,7 @@ describe("version 2 report model and legacy migration", () => {
   it("migrates original exports while preserving every old context and finding field", () => {
     const legacy = legacyDraft();
     const migrated = parseReport(JSON.stringify(legacy));
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
     expect(migrated.id).toBe(legacy.id);
     expect(migrated.studyInstanceUID).toBe(legacy.studyInstanceUID);
     expect(migrated.clinicalContext).toMatchObject(legacy.clinicalContext);
@@ -285,7 +285,7 @@ describe("version 2 report model and legacy migration", () => {
     expect(migrated.impression).toEqual([]);
     expect(migrated.annotations).toEqual([]);
     expect(migrated.status).toBe("draft");
-    expect(JSON.parse(serializeReport(migrated)).schemaVersion).toBe(2);
+    expect(JSON.parse(serializeReport(migrated)).schemaVersion).toBe(3);
   });
 
   it("preserves fictional legacy provenance while marking the file imported", () => {
@@ -423,6 +423,134 @@ describe("version 2 report model and legacy migration", () => {
   it("does not silently migrate or save a legacy runtime value without validation", () => {
     expect(() => serializeReport(legacyDraft() as unknown as Report)).toThrow(
       "Unsupported report schemaVersion",
+    );
+  });
+});
+
+describe("version 3 summary provenance", () => {
+  function acceptedReport(): Report {
+    const report = freshReport();
+    report.clinicalContext.summary = "A reviewed AI-assisted text summary.";
+    report.clinicalContext.summaryProvenance = {
+      origin: "ai-assisted",
+      model: "qwen2.5:1.5b",
+      generatedAt: "2026-11-12T14:30:00.000Z",
+      acceptance: "user-accepted",
+      sourceFingerprint: "a".repeat(64),
+    };
+    return report;
+  }
+
+  it("preserves accepted and edited AI-assisted metadata in JSON without relabeling the source history", () => {
+    const report = acceptedReport();
+    expect(parseReport(serializeReport(report))).toEqual(report);
+    report.clinicalContext.summaryProvenance.origin = "edited-ai-assisted";
+    expect(parseReport(serializeReport(report))).toEqual(report);
+    expect(report.clinicalContext.provenance).toBe("simulated");
+    expect(report.schemaVersion).toBe(3);
+  });
+
+  it("migrates complete version 2 drafts without inventing AI provenance or losing sections", () => {
+    const report = freshReport();
+    report.studyInstanceUID = "1.2.3";
+    report.clinicalContext.summary =
+      "Previously saved summary; authorship not recorded.";
+    report.technique.acquisition = "Retained acquisition text";
+    report.impression = ["Retained impression"];
+    report.status = "reviewed";
+    report.annotations = [
+      {
+        id: "retained-v2-region",
+        source: "manual",
+        shape: "rectangle",
+        description: "Existing v2 region",
+        findingId: report.findings[0].id,
+        reference: {
+          studyInstanceUID: "1.2.3",
+          seriesInstanceUID: "1.2.3.4",
+          sopInstanceUID: "1.2.3.4.5",
+          frameNumber: 2,
+          sliceIndex: 5,
+        },
+        points: [
+          [0, 0, 0],
+          [10, 0, 0],
+          [0, 20, 0],
+          [10, 20, 0],
+        ],
+        viewPlaneNormal: [0, 0, 1],
+        viewUp: [0, -1, 0],
+      },
+    ];
+    const { summaryProvenance: removed, ...oldContext } =
+      report.clinicalContext;
+    void removed;
+    const v2 = { ...report, schemaVersion: 2, clinicalContext: oldContext };
+    const migrated = parseReport(JSON.stringify(v2));
+    expect(migrated).toEqual({
+      ...report,
+      clinicalContext: {
+        ...oldContext,
+        summaryProvenance: { origin: "legacy-unknown" },
+      },
+    });
+    expect(JSON.parse(serializeReport(migrated)).schemaVersion).toBe(3);
+    expect(() => serializeReport(v2 as unknown as Report)).toThrow(
+      "Unsupported report schemaVersion",
+    );
+  });
+
+  it("preserves manual and legacy-unknown labels without generating metadata", () => {
+    for (const origin of ["manual", "legacy-unknown"] as const) {
+      const report = freshReport();
+      report.clinicalContext.summaryProvenance = { origin };
+      expect(
+        parseReport(serializeReport(report)).clinicalContext.summaryProvenance,
+      ).toEqual({ origin });
+    }
+  });
+
+  it.each([
+    ["origin", "AI generated"],
+    ["model", ""],
+    ["model", 42],
+    ["generatedAt", "not a date"],
+    ["generatedAt", "2026-02-30T12:00:00Z"],
+    ["generatedAt", "2026-11-12"],
+    ["generatedAt", "2026-11-12T12:00:00"],
+    ["acceptance", "clinician-approved"],
+    ["acceptance", "pending"],
+    ["sourceFingerprint", "abcd"],
+    ["sourceFingerprint", "A".repeat(64)],
+  ])("rejects invalid summary provenance %s", (key, value) => {
+    const report = acceptedReport();
+    Object.assign(report.clinicalContext.summaryProvenance, { [key]: value });
+    expect(() => parseReport(JSON.stringify(report))).toThrow();
+  });
+
+  it("rejects incomplete provenance, extraneous metadata on manual text, and unsaved proposals", () => {
+    const report = acceptedReport();
+    const json = JSON.parse(JSON.stringify(report));
+    delete json.clinicalContext.summaryProvenance.acceptance;
+    expect(() => parseReport(JSON.stringify(json))).toThrow(
+      "acceptance is required",
+    );
+    Object.assign(report.clinicalContext.summaryProvenance, {
+      origin: "manual",
+    });
+    expect(() => serializeReport(report)).toThrow("unsupported field");
+    expect(() =>
+      parseReport(
+        JSON.stringify({
+          ...freshReport(),
+          proposedSummary: "Never save this draft automatically",
+        }),
+      ),
+    ).toThrow("unsupported field");
+    const missing = JSON.parse(JSON.stringify(freshReport()));
+    delete missing.clinicalContext.summaryProvenance;
+    expect(() => parseReport(JSON.stringify(missing))).toThrow(
+      "summaryProvenance is required",
     );
   });
 });

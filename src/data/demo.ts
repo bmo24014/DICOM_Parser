@@ -2,7 +2,7 @@ import type { Report } from "../domain";
 
 /** Entirely fictional teaching content; no images or image-derived claims. */
 export const demoReport: Report = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   id: "fictional-shoulder-demo",
   clinicalContext: {
     id: "fictional-context-01",
@@ -11,6 +11,7 @@ export const demoReport: Report = {
     provenance: "simulated",
     indication: "",
     notes: "",
+    summaryProvenance: { origin: "manual" },
     history:
       "Fictional scenario: an adult describes six months of right shoulder discomfort " +
       "during overhead activity. No prior surgery is described. This history was " +

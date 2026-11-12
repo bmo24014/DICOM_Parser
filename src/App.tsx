@@ -10,7 +10,7 @@ import ReportEditor from "./components/ReportEditor";
 
 const DicomViewer = lazy(() => import("./components/DicomViewer"));
 const purpose =
-  "This application is an early-stage research prototype designed to explore how shoulder MRI imaging, clinical context, and structured reporting can be integrated into a unified workspace. The current version focuses on interactive image review, simulated patient histories, and editable findings. Future development will investigate AI-assisted clinical summaries and image-based guidance while preserving clinician oversight.";
+  "This application is an early-stage research prototype designed to explore how shoulder MRI imaging, clinical context, and structured reporting can be integrated into a unified workspace. The current version integrates interactive image review, editable clinical context, manual regions, and structured reports. Optional local AI proposes clinical-context summaries for explicit user review. Future research will evaluate summary faithfulness and image-based guidance while preserving clinician oversight.";
 
 function Brand() {
   return (
@@ -72,7 +72,7 @@ function Landing({ onOpen }: { onOpen: () => void }) {
               </div>
               <div>
                 <dt>AI assistance</dt>
-                <dd>Future research</dd>
+                <dd>Local context summaries</dd>
               </div>
             </dl>
             <span className="badge warning">Not for clinical use</span>
@@ -123,6 +123,7 @@ function Landing({ onOpen }: { onOpen: () => void }) {
 function Workspace({ onHome }: { onHome: () => void }) {
   const [mode, setMode] = useState<"demo" | "local">("demo");
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [reportRevision, setReportRevision] = useState(0);
   const [confirmedStudyId, setConfirmedStudyId] = useState<string>();
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string>();
   const [navigationTarget, setNavigationTarget] = useState<{
@@ -187,6 +188,7 @@ function Workspace({ onHome }: { onHome: () => void }) {
         throw new Error("Report files must be smaller than 1 MB.");
       const next = parseReport(await file.text());
       setReport(next);
+      setReportRevision((value) => value + 1);
       setConfirmedStudyId(undefined);
       setSelectedAnnotationId(undefined);
       setNavigationTarget(undefined);
@@ -497,7 +499,11 @@ function Workspace({ onHome }: { onHome: () => void }) {
                 </div>
               )}
             </div>
-            <ClinicalContextEditor report={report} setReport={setReport} />
+            <ClinicalContextEditor
+              key={reportRevision}
+              report={report}
+              setReport={setReport}
+            />
             <p className="small quiet image-footnote">
               Review controls apply to supported DICOM images. Compressed
               formats and unusual transfer syntaxes may be unsupported; decoder

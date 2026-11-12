@@ -1,5 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ClinicalContext, Report } from "../domain";
+import AISummaryAssistant from "./AISummaryAssistant";
+import { sourceFingerprint, summarySource } from "../data/summarySource";
 
 export default function ClinicalContextEditor({
   report,
@@ -16,6 +18,26 @@ export default function ClinicalContextEditor({
         ...current.clinicalContext,
         ...patch,
         provenance: "manual",
+      },
+    }));
+  const summaryProvenance = context.summaryProvenance;
+  const aiSummary = "model" in summaryProvenance ? summaryProvenance : null;
+  const sourceChanged =
+    !!aiSummary &&
+    aiSummary.sourceFingerprint !== sourceFingerprint(summarySource(context));
+  const editSummary = (summary: string) =>
+    setReport((current) => ({
+      ...current,
+      clinicalContext: {
+        ...current.clinicalContext,
+        summary,
+        summaryProvenance:
+          "model" in current.clinicalContext.summaryProvenance
+            ? {
+                ...current.clinicalContext.summaryProvenance,
+                origin: "edited-ai-assisted",
+              }
+            : { origin: "manual" },
       },
     }));
   return (
@@ -82,9 +104,51 @@ export default function ClinicalContextEditor({
             value={context.summary}
             rows={3}
             maxLength={10000}
-            onChange={(e) => update({ summary: e.target.value })}
+            onChange={(e) => editSummary(e.target.value)}
           />
         </label>
+        <p className="small quiet summary-provenance">
+          {aiSummary ? (
+            <>
+              {aiSummary.origin === "edited-ai-assisted"
+                ? "Edited AI-assisted summary"
+                : "AI-assisted summary"}{" "}
+              · Model: {aiSummary.model} · User-accepted · Generated{" "}
+              {aiSummary.generatedAt}
+            </>
+          ) : summaryProvenance.origin === "manual" ? (
+            "Summary source: manually authored."
+          ) : (
+            "Summary source: legacy draft; AI origin is not established."
+          )}
+        </p>
+        {sourceChanged && (
+          <p className="message warning">
+            Source context has changed since this AI-assisted summary was
+            generated. Review the saved summary or generate a new draft.
+          </p>
+        )}
+        <AISummaryAssistant
+          context={context}
+          onAccept={(summary, provenance, expectedSummary) =>
+            setReport((current) => {
+              if (
+                sourceFingerprint(summarySource(current.clinicalContext)) !==
+                  provenance.sourceFingerprint ||
+                current.clinicalContext.summary !== expectedSummary
+              )
+                return current;
+              return {
+                ...current,
+                clinicalContext: {
+                  ...current.clinicalContext,
+                  summary,
+                  summaryProvenance: provenance,
+                },
+              };
+            })
+          }
+        />
         <label>
           Relevant symptoms / additional notes
           <textarea
@@ -96,8 +160,8 @@ export default function ClinicalContextEditor({
         </label>
         <p className="small quiet">
           The fictional example remains available in the initial demo. Changing
-          image selection never replaces this context. Future AI summaries are
-          not implemented.
+          image selection never replaces this context. The local AI assistant
+          summarizes supplied text only and does not interpret MRI images.
         </p>
       </div>
     </section>

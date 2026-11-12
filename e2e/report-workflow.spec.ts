@@ -116,7 +116,7 @@ test("editable context and structured sections restore through JSON and export a
 
   const jsonBytes = await downloadBytes(page, "Save Draft (JSON)");
   const draft = JSON.parse(jsonBytes.toString());
-  expect(draft.schemaVersion).toBe(2);
+  expect(draft.schemaVersion).toBe(3);
   expect(draft.clinicalContext).toMatchObject({
     caseIdentifier: "RESEARCH_CASE_BROWSER_42",
     history,
@@ -237,7 +237,7 @@ test("original version 1 JSON migrates without losing authored text or provenanc
   const migrated = JSON.parse(
     (await downloadBytes(page, "Save Draft (JSON)")).toString(),
   );
-  expect(migrated.schemaVersion).toBe(2);
+  expect(migrated.schemaVersion).toBe(3);
   expect(migrated.id).toBe(legacy.id);
   expect(migrated.studyInstanceUID).toBe(legacy.studyInstanceUID);
   expect(migrated.clinicalContext).toMatchObject(legacy.clinicalContext);
